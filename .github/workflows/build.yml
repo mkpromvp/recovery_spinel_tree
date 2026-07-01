@@ -262,7 +262,7 @@ jobs:
           mv "$APK" "${APK%.apk}.zip"
           echo "FOX_USE_SPECIFIC_MAGISK_ZIP=$(ls ~/Magisk/Magisk*.zip | head -1)" >> "$GITHUB_ENV"
 
-      - name: Build OrangeFox (with libpixelflinger in ramdisk)
+      - name: Build OrangeFox
         run: |
           set +e
           cd "$SYNC_PATH"
@@ -299,51 +299,70 @@ jobs:
 
           lunch "$LUNCH_TARGET"
           make clean
+          mka adbd vendorbootimage
 
-          # Build libpixelflinger first, before vendorbootimage
-          echo "=== Building libpixelflinger.so ==="
-          mka libpixelflinger 2>&1 || true
 
-          # Copy built libpixelflinger into device tree recovery/root so it gets packed into vendor_boot
+
+      - name: Verify libpixelflinger in ramdisk and fix if missing
+        run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
-          DEVICE_TREE="$DEVICE_DIRECTORY/$DEVICE_NAME"
+          VBIMG="$OUT/vendor_boot.img"
           PIX="libpixelflinger.so"
 
-          FOUND_64=""
-          FOUND_32=""
+          if [ ! -f "$VBIMG" ]; then
+            echo "?? vendor_boot.img not found"
+            exit 0
+          fi
 
+          echo "=== Checking built libpixelflinger.so ==="
+          SRC=""
           for path in \
             "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
             "$OUT/system/lib64/$PIX" \
             $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
             if [ -f "$path" ]; then
-              mkdir -p "$DEVICE_TREE/recovery/root/vendor/lib64"
-              cp -v "$path" "$DEVICE_TREE/recovery/root/vendor/lib64/$PIX"
-              FOUND_64="1"
+              SRC="$path"
               break
             fi
           done
 
-          for path in \
-            "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
-            "$OUT/system/lib/$PIX" \
-            $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
-            if [ -f "$path" ]; then
-              mkdir -p "$DEVICE_TREE/recovery/root/vendor/lib"
-              cp -v "$path" "$DEVICE_TREE/recovery/root/vendor/lib/$PIX"
-              FOUND_32="1"
-              break
+          if [ -z "$SRC" ]; then
+            echo "?? Built libpixelflinger.so not found in build output!"
+            find "$OUT" -name "libpixelflinger*" 2>/dev/null | head -10 || true
+          else
+            echo "Found built library at: $SRC ($(stat -c%s "$SRC" 2>/dev/null) bytes)"
+
+            # Check if it's in the recovery ramdisk
+            if [ -f "$OUT/recovery/root/vendor/lib64/$PIX" ]; then
+              echo "? libpixelflinger.so already in recovery ramdisk!"
+              ls -la "$OUT/recovery/root/vendor/lib64/$PIX"
+            else
+              echo "? NOT in recovery ramdisk - copying..."
+              mkdir -p "$OUT/recovery/root/vendor/lib64"
+              cp -v "$SRC" "$OUT/recovery/root/vendor/lib64/$PIX"
+
+              # Also try 32-bit
+              for path32 in \
+                "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
+                "$OUT/system/lib/$PIX" \
+                $(find "$OUT/obj_arm" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
+                if [ -f "$path32" ]; then
+                  mkdir -p "$OUT/recovery/root/vendor/lib"
+                  cp -v "$path32" "$OUT/recovery/root/vendor/lib/$PIX"
+                  break
+                fi
+              done
+
+              # Rebuild vendor_boot with fixed ramdisk
+              echo "=== Rebuilding vendor_boot with fixed ramdisk ==="
+              cd "$SYNC_PATH"
+              mka vendorbootimage 2>&1 || echo "Warning: rebuild failed, original vendor_boot may be missing libpixelflinger"
             fi
-          done
+          fi
 
-          echo "=== Device tree recovery/root/vendor/ contents ==="
-          find "$DEVICE_TREE/recovery/root/vendor" -name "*.so" 2>/dev/null || echo "(empty)"
-
-          # Now build vendorbootimage - libpixelflinger will be packed since it's in device tree
-          echo "=== Building vendorbootimage ==="
-          mka adbd vendorbootimage
-
-
+          echo "=== Final recovery/root/vendor/lib64 contents ==="
+          ls -la "$OUT/recovery/root/vendor/lib64/" 2>/dev/null || echo "(empty)"
+          echo "=== Done ==="
       - name: Set build date
         run: echo "BUILD_DATE=$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
