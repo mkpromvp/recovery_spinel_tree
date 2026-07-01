@@ -1,4 +1,4 @@
-name: ðŸ¦Š OrangeFox Â· Xiaomi Spinel
+name: 🦊 OrangeFox · Xiaomi Spinel
 
 on:
   workflow_dispatch:
@@ -9,8 +9,8 @@ on:
         required: true
         type: choice
         options:
-          - "12.1  â€” Android 12L Â· VAB + AIDL fscrypt"
-          - "14.1  â€” Android 14 Â· GKI 2.0 / VAB  [EXPERIMENTAL]"
+          - "12.1  — Android 12L · VAB + AIDL fscrypt"
+          - "14.1  — Android 14 · GKI 2.0 / VAB  [EXPERIMENTAL]"
 
       OF_MAINTAINER_PATCH_VERSION:
         description: "Maintainer patch version (digits only, e.g. 1)"
@@ -55,11 +55,11 @@ on:
         default: "android-12.1"
         type: string
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
   build:
-    name: "ðŸ¦Š spinel Â· fox_${{ github.event.inputs.FOX_BRANCH }}"
+    name: "🦊 spinel · fox_${{ github.event.inputs.FOX_BRANCH }}"
     runs-on: ubuntu-22.04
     if: github.event.repository.owner.id == github.event.sender.id
     timeout-minutes: 720
@@ -86,7 +86,7 @@ jobs:
       - name: Display inputs
         run: |
           echo "Branch       : ${{ github.event.inputs.FOX_BRANCH }}"
-          echo "Target       : vendorbootimage (Recovery-as-Vendor Â· GKI 2.0)"
+          echo "Target       : vendorbootimage (Recovery-as-Vendor · GKI 2.0)"
           echo "Device tree  : ${{ github.event.inputs.DT_REPO_URL }} @ ${{ github.event.inputs.DT_BRANCH }}"
           echo "Maintainer   : TheGreatEclipse"
           echo "LDCheck      : ${{ github.event.inputs.LDCHECK }}"
@@ -142,14 +142,14 @@ jobs:
           git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git config --global color.ui   false
 
-      - name: Telegram â€” build started
+      - name: Telegram — build started
         if: env.TG_TOKEN != ''
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              'ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâœ”ï¸ Build triggered!\n\nðŸ“± Device: <code>spinel</code> (Xiaomi)\nðŸŒ¿ Branch: <code>%s</code>\nðŸŽ¯ Target: <code>vendorbootimage</code> (RaV Â· GKI 2.0)\nðŸ‘¤ Maintainer: TheGreatEclipse\nðŸŒ² Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View</a>' \
+              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✔️ Build triggered!\n\n📱 Device: <code>spinel</code> (Xiaomi)\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code> (RaV · GKI 2.0)\n👤 Maintainer: TheGreatEclipse\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View</a>' \
               "$FOX_BRANCH")"
 
       - name: Clone orangefox_sync
@@ -173,7 +173,7 @@ jobs:
              grep -q 'name:[[:space:]]*"guava"' external/guava/Android.bp; then
             echo "guava module already available."
           else
-            echo "guava missing â€” cloning fallback..."
+            echo "guava missing — cloning fallback..."
             rm -rf external/guava
             git clone --depth=1 \
               https://android.googlesource.com/platform/external/guava \
@@ -214,7 +214,6 @@ jobs:
           mv device_tree_staging "$DEVICE_DIRECTORY/$DEVICE_NAME"
 
           COMMIT_ID=$(git -C "$DEVICE_DIRECTORY/$DEVICE_NAME" rev-parse HEAD)
-          # Switch to gzip compression (vendor_boot was exceeding 64MB with LZ4)
           sed -i '/BOARD_RAMDISK_USE_LZ4/d' "$DEVICE_DIRECTORY/$DEVICE_NAME/BoardConfig.mk"
           {
             echo "DEVICE_NAME=$DEVICE_NAME"
@@ -229,15 +228,11 @@ jobs:
           set -e
           mkdir -p ~/Magisk && cd ~/Magisk
 
-          # Use authenticated request to avoid GitHub API's 60 req/hr
-          # unauthenticated rate limit (this was causing jq to receive a
-          # rate-limit error JSON with no "assets" field -> null iteration).
           RESPONSE=$(curl -sL \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/topjohnwu/Magisk/releases/latest)
 
-          # Bail out clearly if the API call didn't return a proper release object
           if ! echo "$RESPONSE" | jq -e '.assets' >/dev/null 2>&1; then
             echo "? GitHub API did not return a valid release object."
             echo "---- Response (truncated) ----"
@@ -341,12 +336,12 @@ jobs:
           tag_name: ${{ github.run_id }}
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            ## ðŸ¦Š OrangeFox Recovery â€” Xiaomi Spinel
+            ## 🦊 OrangeFox Recovery — Xiaomi Spinel
 
             | | |
             |---|---|
             | **Branch** | `${{ env.FOX_BRANCH }}` |
-            | **Target** | `vendorbootimage` (Recovery-as-Vendor Â· GKI 2.0) |
+            | **Target** | `vendorbootimage` (Recovery-as-Vendor · GKI 2.0) |
             | **Device tree** | [${{ github.event.inputs.DT_REPO_URL }}](${{ github.event.inputs.DT_REPO_URL }}) @ `${{ github.event.inputs.DT_BRANCH }}` |
             | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.event.inputs.DT_REPO_URL }}/commit/${{ env.COMMIT_ID }}) |
             | **Maintainer** | TheGreatEclipse |
@@ -378,7 +373,6 @@ jobs:
           FILE="$OUT/vendor_boot.img"
           if [ ! -f "$FILE" ]; then exit 0; fi
 
-          # Get a Gofile server
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo "$SERVER_RESPONSE" | jq -r '.data.servers[0].name // "store4"')
           echo "Gofile server: $SERVER"
@@ -396,37 +390,37 @@ jobs:
             echo "$GOFILE_RESPONSE" | head -c 300
           fi
 
-      - name: Telegram â€” success
+      - name: Telegram — success
         if: success() && env.TG_TOKEN != '' && env.CHECK_IMG_IS_OK == 'true'
         run: |
-          TG_TEXT='ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâœ… Build complete!\n\nðŸ“± Device: <code>spinel</code>\nðŸŒ¿ Branch: <code>%s</code>\nðŸŽ¯ Target: <code>vendorbootimage</code>\nðŸ“¦ File: <code>%s</code>\nðŸ” MD5: <code>%s</code>\n'
+          TG_TEXT='🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✅ Build complete!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code>\n📦 File: <code>%s</code>\n🔐 MD5: <code>%s</code>\n'
           if [ -n "$GOFILE_LINK" ]; then
-            TG_TEXT="${TG_TEXT}â¬‡ï¸ Gofile: <a href=\"%s\">Download</a>\n"
+            TG_TEXT="${TG_TEXT}⬇️ Gofile: <a href=\"%s\">Download</a>\n"
           fi
           if [ -n "$MIRROR_LINK" ]; then
-            TG_TEXT="${TG_TEXT}â¬‡ï¸ Mirror: <a href=\"%s\">oshi.at</a>\n"
+            TG_TEXT="${TG_TEXT}⬇️ Mirror: <a href=\"%s\">oshi.at</a>\n"
           fi
-          TG_TEXT="${TG_TEXT}ðŸŒ² Release: <a href=\"https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}\">GitHub</a>\nðŸ‘¤ By: TheGreatEclipse"
+          TG_TEXT="${TG_TEXT}🌲 Release: <a href=\"https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}\">GitHub</a>\n👤 By: TheGreatEclipse"
 
           ARGS="-d parse_mode=HTML -d text=\"$(printf "$TG_TEXT" "$FOX_BRANCH" "$FILENAME" "$MD5_IMG""
           if [ -n "$GOFILE_LINK" ]; then
-            ARGS="$ARGS" '"$GOFILE_LINK"'
+            ARGS="$ARGS \"$GOFILE_LINK\""
           fi
           if [ -n "$MIRROR_LINK" ]; then
-            ARGS="$ARGS" '"$MIRROR_LINK"'
+            ARGS="$ARGS \"$MIRROR_LINK\""
           fi
-          ARGS="$ARGS)"\"
+          ARGS="$ARGS)\""
 
-          eval curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d chat_id="${TG_CHAT_ID}" $ARGS
+          eval curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d chat_id="${TG_CHAT_ID}" \$ARGS
 
-      - name: Telegram â€” failure
+      - name: Telegram — failure
         if: failure() && env.TG_TOKEN != ''
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              'ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâŒ Build FAILED!\n\nðŸ“± Device: <code>spinel</code>\nðŸŒ¿ Branch: <code>%s</code>\nðŸŒ² Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View logs</a>' \
+              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n❌ Build FAILED!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View logs</a>' \
               "$FOX_BRANCH")"
 
       - name: Run LDCheck
