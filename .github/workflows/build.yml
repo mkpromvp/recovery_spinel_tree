@@ -301,6 +301,66 @@ jobs:
           make clean
           mka adbd vendorbootimage
 
+      - name: Copy libpixelflinger.so to recovery ramdisk
+        run: |
+          OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
+          RAMDISK="$OUT/recovery/root"
+          mkdir -p "$RAMDISK/vendor/lib64" "$RAMDISK/vendor/lib"
+
+          echo "=== Searching for built libpixelflinger.so ==="
+          PIX="libpixelflinger.so"
+          FOUND=""
+
+          # Search common build output paths
+          for path in \
+            "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
+            "$OUT/system/lib64/$PIX" \
+            $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
+            if [ -f "$path" ]; then
+              cp -v "$path" "$RAMDISK/vendor/lib64/$PIX"
+              FOUND="1"
+              break
+            fi
+          done
+
+          if [ -z "$FOUND" ]; then
+            echo "? 64-bit libpixelflinger.so not found — building from source..."
+            # Build it manually from AOSP source
+            cd "$SYNC_PATH"
+            ONE_SHOT_MAKEFILE="system/core/libpixelflinger/Android.mk" \
+              make -j$(nproc) libpixelflinger 2>/dev/null || true
+            for path in \
+              "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
+              $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
+              if [ -f "$path" ]; then
+                cp -v "$path" "$RAMDISK/vendor/lib64/$PIX"
+                FOUND="1"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$FOUND" ]; then
+            echo "?? CRITICAL: libpixelflinger.so still not found!"
+            find "$OUT" -name "libpixelflinger*" 2>/dev/null | head -10 || true
+          fi
+
+          # Also copy 32-bit
+          for path in \
+            "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
+            "$OUT/system/lib/$PIX" \
+            $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
+            if [ -f "$path" ]; then
+              cp -v "$path" "$RAMDISK/vendor/lib/$PIX"
+              break
+            fi
+          done
+
+          echo "=== Ramdisk vendor/lib64 ==="
+          ls -la "$RAMDISK/vendor/lib64/" 2>/dev/null || true
+          echo "=== Ramdisk vendor/lib ==="
+          ls -la "$RAMDISK/vendor/lib/" 2>/dev/null || true
+
       - name: Set build date
         run: echo "BUILD_DATE=$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
