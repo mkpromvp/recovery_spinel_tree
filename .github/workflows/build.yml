@@ -182,6 +182,7 @@ jobs:
 
       - name: Clone spinel device tree
         run: |
+          set -e
           cd "$SYNC_PATH"
 
           DT_URL="${{ github.event.inputs.DT_REPO_URL }}"
@@ -213,6 +214,8 @@ jobs:
           mv device_tree_staging "$DEVICE_DIRECTORY/$DEVICE_NAME"
 
           COMMIT_ID=$(git -C "$DEVICE_DIRECTORY/$DEVICE_NAME" rev-parse HEAD)
+          # Switch to gzip compression (vendor_boot was exceeding 64MB with LZ4)
+          sed -i '/BOARD_RAMDISK_USE_LZ4/d' "$DEVICE_DIRECTORY/$DEVICE_NAME/BoardConfig.mk"
           {
             echo "DEVICE_NAME=$DEVICE_NAME"
             echo "DEVICE_DIRECTORY=$DEVICE_DIRECTORY"
