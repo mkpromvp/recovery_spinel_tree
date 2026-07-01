@@ -226,14 +226,45 @@ jobs:
       - name: Download latest Magisk
         if: github.event.inputs.USE_LATEST_MAGISK == 'true'
         run: |
+          set -e
           mkdir -p ~/Magisk && cd ~/Magisk
-          URL=$(curl -sL https://api.github.com/repos/topjohnwu/Magisk/releases/latest \
-            | jq -r '.assets[] | select(.name | startswith("Magisk-")) | .browser_download_url' \
-            | head -1)
+
+          # Use authenticated request to avoid GitHub API's 60 req/hr
+          # unauthenticated rate limit (this was causing jq to receive a
+          # rate-limit error JSON with no "assets" field -> null iteration).
+          RESPONSE=$(curl -sL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/topjohnwu/Magisk/releases/latest)
+
+          # Bail out clearly if the API call didn't return a proper release object
+          if ! echo "$RESPONSE" | jq -e '.assets' >/dev/null 2>&1; then
+            echo "❌ GitHub API did not return a valid release object."
+            echo "---- Response (truncated) ----"
+            echo "$RESPONSE" | head -c 500
+            echo
+            exit 1
+          fi
+
+          URL=$(echo "$RESPONSE" \
+            | jq -r '[.assets[] | select(.name | test("^Magisk-.*\\.apk$")) | .browser_download_url][0]')
+
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "❌ Could not find a Magisk-*.apk asset in the latest release."
+            echo "Available assets:"
+            echo "$RESPONSE" | jq -r '.assets[].name'
+            exit 1
+          fi
+
           echo "Downloading Magisk: $URL"
-          aria2c "$URL" || wget "$URL"
+          aria2c -x4 "$URL" || wget "$URL"
+
           APK=$(ls Magisk*.apk 2>/dev/null | head -1)
-          [ -n "$APK" ] && mv "$APK" "${APK%.apk}.zip"
+          if [ -z "$APK" ]; then
+            echo "❌ Download appears to have failed, no Magisk*.apk present."
+            exit 1
+          fi
+          mv "$APK" "${APK%.apk}.zip"
           echo "FOX_USE_SPECIFIC_MAGISK_ZIP=$(ls ~/Magisk/Magisk*.zip | head -1)" >> "$GITHUB_ENV"
 
       - name: Build OrangeFox
