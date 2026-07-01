@@ -303,21 +303,25 @@ jobs:
 
 
 
-      - name: Verify libpixelflinger in ramdisk and fix if missing
+      - name: Fix libpixelflinger DT_NEEDED in recovery binary and rebuild vendor_boot
         run: |
           set -e
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
           VBIMG="$OUT/vendor_boot.img"
           PIX="libpixelflinger.so"
-          NEED_REBUILD=false
 
           if [ ! -f "$VBIMG" ]; then
             echo "?? vendor_boot.img not found — nothing to fix"
             exit 0
           fi
 
-          # ── 1. Find built library ──
-          echo "=== Locating built libpixelflinger.so ==="
+          # Install patchelf for modifying DT_NEEDED
+          echo "=== Installing patchelf ==="
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq patchelf
+
+          # ── 1. Find built library or use prebuilt stub ──
+          echo "=== Locating libpixelflinger.so ==="
           SRC=""
           for path in \
             "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
@@ -329,50 +333,52 @@ jobs:
             fi
           done
 
-          if [ -z "$SRC" ]; then
-            echo "?? Built libpixelflinger.so not found in build output!"
-            find "$OUT" -name "libpixelflinger*" 2>/dev/null | head -10 || true
-            exit 1
-          fi
-
-          echo "Built library: $SRC ($(stat -c%s "$SRC") bytes)"
-
-          # Verify it has the missing symbol
-          if ! nm -D "$SRC" | grep -q 'res_get_pixel_formatv'; then
-            echo "?? Built library missing res_get_pixel_formatv symbol!"
-          else
-            echo "? Symbol res_get_pixel_formatv CONFIRMED in built library"
-          fi
-
-          # ── 2. Ensure library is in ramdisk staging ──
           mkdir -p "$OUT/recovery/root/vendor/lib64"
-          if [ -f "$OUT/recovery/root/vendor/lib64/$PIX" ]; then
-            echo "? Library already in recovery/root/vendor/lib64/"
-          else
-            echo "? Copying library into recovery/root/vendor/lib64/"
-            cp -v "$SRC" "$OUT/recovery/root/vendor/lib64/$PIX"
-            NEED_REBUILD=true
+
+          if [ -n "$SRC" ]; then
+            echo "Found OrangeFox-built library: $SRC ($(stat -c%s "$SRC") bytes)"
+            if ! nm -D "$SRC" | grep -q 'res_get_pixel_formatv'; then
+              echo "! Built library missing res_get_pixel_formatv — using prebuilt stub"
+              SRC=""
+            else
+              echo "? Symbol res_get_pixel_formatv CONFIRMED in built library"
+            fi
           fi
 
-          # Also try 32-bit
-          for path32 in \
-            "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
-            "$OUT/system/lib/$PIX" \
-            $(find "$OUT/obj_arm" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
-            if [ -f "$path32" ]; then
-              mkdir -p "$OUT/recovery/root/vendor/lib"
-              cp -v "$path32" "$OUT/recovery/root/vendor/lib/$PIX"
-              break
+          if [ -z "$SRC" ]; then
+            echo "Using prebuilt stub from device tree"
+            DT_LIB="$SYNC_PATH/device/xiaomi/spinel/recovery/root/vendor/lib64/$PIX"
+            if [ -f "$DT_LIB" ]; then
+              echo "Prebuilt at $DT_LIB ($(stat -c%s "$DT_LIB") bytes)"
+              nm -D "$DT_LIB" | grep 'res_get_pixel_formatv' && echo "? Symbol confirmed"
+              cp -v "$DT_LIB" "$OUT/recovery/root/vendor/lib64/$PIX"
+            else
+              echo "!! Prebuilt not found!"
+              find "$SYNC_PATH/device/xiaomi/spinel" -name "$PIX" 2>/dev/null
             fi
-          done
+          fi
 
-          # ── 3. Force rebuild of vendor_boot regardless ──
-          echo "=== Forcing vendor_boot rebuild to include library ==="
+          # ── 2. Add DT_NEEDED libpixelflinger.so to recovery binary ──
+          RECOVERY_BIN="$OUT/recovery/root/system/bin/recovery"
+          if [ -f "$RECOVERY_BIN" ]; then
+            echo "=== Adding DT_NEEDED $PIX to recovery binary ==="
+            if ! patchelf --print-needed "$RECOVERY_BIN" 2>/dev/null | grep -q "$PIX"; then
+              patchelf --add-needed "$PIX" "$RECOVERY_BIN"
+              echo "? Added $PIX to DT_NEEDED"
+            else
+              echo "? $PIX already in DT_NEEDED"
+            fi
+            echo "Recovery DT_NEEDED:"
+            patchelf --print-needed "$RECOVERY_BIN" | grep -i pixelflinger
+          else
+            echo "?? Recovery binary not found at $RECOVERY_BIN"
+          fi
+
+          # ── 3. Force rebuild vendor_boot ──
+          echo "=== Forcing vendor_boot rebuild ==="
           rm -f "$VBIMG"
           rm -f "$OUT/ramdisk-recovery.cpio" "$OUT/ramdisk-recovery.img" "$OUT/ramdisk-recovery.cpio.gz" "$OUT/ramdisk-recovery.cpio.lz4" "$OUT/ramdisk-recovery.cpio.lzma" 2>/dev/null || true
           rm -rf "$OUT/obj/PACKAGING/ramdisk_recovery_intermediates" 2>/dev/null || true
-
-          # Touch recovery/root to force make to rebuild ramdisk
           touch "$OUT/recovery/root/init"
 
           cd "$SYNC_PATH"
@@ -386,18 +392,24 @@ jobs:
             exit 1
           fi
 
-          # ── 5. Extract and verify library in ramdisk ──
+          # ── 5. Verify library in ramdisk ──
           echo "=== Verifying library in ramdisk ==="
           RAMDISK_CPIO=$(ls "$OUT"/ramdisk-recovery.* 2>/dev/null | head -1)
           if [ -n "$RAMDISK_CPIO" ]; then
             echo "Ramdisk: $RAMDISK_CPIO"
-            # Check contents without full extraction
+            found=false
             if [[ "$RAMDISK_CPIO" == *.gz ]]; then
-              zcat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
+              zcat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" && found=true
             elif [[ "$RAMDISK_CPIO" == *.lz4 ]]; then
-              lz4 -d "$RAMDISK_CPIO" stdout 2>/dev/null | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
+              lz4 -d "$RAMDISK_CPIO" stdout 2>/dev/null | cpio -t 2>/dev/null | grep "$PIX" && found=true
             else
-              cat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
+              cat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" && found=true
+            fi
+            if [ "$found" = true ]; then
+              echo "? libpixelflinger.so CONFIRMED in ramdisk"
+            else
+              echo "?? libpixelflinger.so NOT found in ramdisk!"
+              exit 1
             fi
           fi
 
