@@ -305,16 +305,19 @@ jobs:
 
       - name: Verify libpixelflinger in ramdisk and fix if missing
         run: |
+          set -e
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
           VBIMG="$OUT/vendor_boot.img"
           PIX="libpixelflinger.so"
+          NEED_REBUILD=false
 
           if [ ! -f "$VBIMG" ]; then
-            echo "?? vendor_boot.img not found"
+            echo "?? vendor_boot.img not found — nothing to fix"
             exit 0
           fi
 
-          echo "=== Checking built libpixelflinger.so ==="
+          # ── 1. Find built library ──
+          echo "=== Locating built libpixelflinger.so ==="
           SRC=""
           for path in \
             "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
@@ -329,39 +332,75 @@ jobs:
           if [ -z "$SRC" ]; then
             echo "?? Built libpixelflinger.so not found in build output!"
             find "$OUT" -name "libpixelflinger*" 2>/dev/null | head -10 || true
+            exit 1
+          fi
+
+          echo "Built library: $SRC ($(stat -c%s "$SRC") bytes)"
+
+          # Verify it has the missing symbol
+          if ! nm -D "$SRC" | grep -q 'res_get_pixel_formatv'; then
+            echo "?? Built library missing res_get_pixel_formatv symbol!"
           else
-            echo "Found built library at: $SRC ($(stat -c%s "$SRC" 2>/dev/null) bytes)"
+            echo "? Symbol res_get_pixel_formatv CONFIRMED in built library"
+          fi
 
-            # Check if it's in the recovery ramdisk
-            if [ -f "$OUT/recovery/root/vendor/lib64/$PIX" ]; then
-              echo "? libpixelflinger.so already in recovery ramdisk!"
-              ls -la "$OUT/recovery/root/vendor/lib64/$PIX"
+          # ── 2. Ensure library is in ramdisk staging ──
+          mkdir -p "$OUT/recovery/root/vendor/lib64"
+          if [ -f "$OUT/recovery/root/vendor/lib64/$PIX" ]; then
+            echo "? Library already in recovery/root/vendor/lib64/"
+          else
+            echo "? Copying library into recovery/root/vendor/lib64/"
+            cp -v "$SRC" "$OUT/recovery/root/vendor/lib64/$PIX"
+            NEED_REBUILD=true
+          fi
+
+          # Also try 32-bit
+          for path32 in \
+            "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
+            "$OUT/system/lib/$PIX" \
+            $(find "$OUT/obj_arm" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
+            if [ -f "$path32" ]; then
+              mkdir -p "$OUT/recovery/root/vendor/lib"
+              cp -v "$path32" "$OUT/recovery/root/vendor/lib/$PIX"
+              break
+            fi
+          done
+
+          # ── 3. Force rebuild of vendor_boot regardless ──
+          echo "=== Forcing vendor_boot rebuild to include library ==="
+          rm -f "$VBIMG"
+          rm -f "$OUT/ramdisk-recovery.cpio" "$OUT/ramdisk-recovery.img" "$OUT/ramdisk-recovery.cpio.gz" "$OUT/ramdisk-recovery.cpio.lz4" "$OUT/ramdisk-recovery.cpio.lzma" 2>/dev/null || true
+          rm -rf "$OUT/obj/PACKAGING/ramdisk_recovery_intermediates" 2>/dev/null || true
+
+          # Touch recovery/root to force make to rebuild ramdisk
+          touch "$OUT/recovery/root/init"
+
+          cd "$SYNC_PATH"
+          mka vendorbootimage 2>&1
+
+          # ── 4. Verify final image ──
+          if [ -f "$VBIMG" ]; then
+            echo "=== vendor_boot.img rebuilt: $(stat -c%s "$VBIMG") bytes ==="
+          else
+            echo "?? vendor_boot.img was NOT rebuilt!"
+            exit 1
+          fi
+
+          # ── 5. Extract and verify library in ramdisk ──
+          echo "=== Verifying library in ramdisk ==="
+          RAMDISK_CPIO=$(ls "$OUT"/ramdisk-recovery.* 2>/dev/null | head -1)
+          if [ -n "$RAMDISK_CPIO" ]; then
+            echo "Ramdisk: $RAMDISK_CPIO"
+            # Check contents without full extraction
+            if [[ "$RAMDISK_CPIO" == *.gz ]]; then
+              zcat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
+            elif [[ "$RAMDISK_CPIO" == *.lz4 ]]; then
+              lz4 -d "$RAMDISK_CPIO" stdout 2>/dev/null | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
             else
-              echo "? NOT in recovery ramdisk - copying..."
-              mkdir -p "$OUT/recovery/root/vendor/lib64"
-              cp -v "$SRC" "$OUT/recovery/root/vendor/lib64/$PIX"
-
-              # Also try 32-bit
-              for path32 in \
-                "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
-                "$OUT/system/lib/$PIX" \
-                $(find "$OUT/obj_arm" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
-                if [ -f "$path32" ]; then
-                  mkdir -p "$OUT/recovery/root/vendor/lib"
-                  cp -v "$path32" "$OUT/recovery/root/vendor/lib/$PIX"
-                  break
-                fi
-              done
-
-              # Rebuild vendor_boot with fixed ramdisk
-              echo "=== Rebuilding vendor_boot with fixed ramdisk ==="
-              cd "$SYNC_PATH"
-              mka vendorbootimage 2>&1 || echo "Warning: rebuild failed, original vendor_boot may be missing libpixelflinger"
+              cat "$RAMDISK_CPIO" | cpio -t 2>/dev/null | grep "$PIX" || echo "?? libpixelflinger NOT in ramdisk cpio!"
             fi
           fi
 
-          echo "=== Final recovery/root/vendor/lib64 contents ==="
-          ls -la "$OUT/recovery/root/vendor/lib64/" 2>/dev/null || echo "(empty)"
           echo "=== Done ==="
       - name: Set build date
         run: echo "BUILD_DATE=$(date +%Y%m%d)" >> "$GITHUB_ENV"
