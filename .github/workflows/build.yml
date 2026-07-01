@@ -1,4 +1,4 @@
-name: 🦊 OrangeFox · Xiaomi Spinel
+name: ðŸ¦Š OrangeFox Â· Xiaomi Spinel
 
 on:
   workflow_dispatch:
@@ -9,8 +9,8 @@ on:
         required: true
         type: choice
         options:
-          - "12.1  — Android 12L · VAB + AIDL fscrypt"
-          - "14.1  — Android 14 · GKI 2.0 / VAB  [EXPERIMENTAL]"
+          - "12.1  â€” Android 12L Â· VAB + AIDL fscrypt"
+          - "14.1  â€” Android 14 Â· GKI 2.0 / VAB  [EXPERIMENTAL]"
 
       OF_MAINTAINER_PATCH_VERSION:
         description: "Maintainer patch version (digits only, e.g. 1)"
@@ -55,11 +55,11 @@ on:
         default: "android-12.1"
         type: string
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 jobs:
   build:
-    name: "🦊 spinel · fox_${{ github.event.inputs.FOX_BRANCH }}"
+    name: "ðŸ¦Š spinel Â· fox_${{ github.event.inputs.FOX_BRANCH }}"
     runs-on: ubuntu-22.04
     if: github.event.repository.owner.id == github.event.sender.id
     timeout-minutes: 720
@@ -86,7 +86,7 @@ jobs:
       - name: Display inputs
         run: |
           echo "Branch       : ${{ github.event.inputs.FOX_BRANCH }}"
-          echo "Target       : vendorbootimage (Recovery-as-Vendor · GKI 2.0)"
+          echo "Target       : vendorbootimage (Recovery-as-Vendor Â· GKI 2.0)"
           echo "Device tree  : ${{ github.event.inputs.DT_REPO_URL }} @ ${{ github.event.inputs.DT_BRANCH }}"
           echo "Maintainer   : TheGreatEclipse"
           echo "LDCheck      : ${{ github.event.inputs.LDCHECK }}"
@@ -142,14 +142,14 @@ jobs:
           git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git config --global color.ui   false
 
-      - name: Telegram — build started
+      - name: Telegram â€” build started
         if: env.TG_TOKEN != ''
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✔️ Build triggered!\n\n📱 Device: <code>spinel</code> (Xiaomi)\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code> (RaV · GKI 2.0)\n👤 Maintainer: TheGreatEclipse\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View</a>' \
+              'ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâœ”ï¸ Build triggered!\n\nðŸ“± Device: <code>spinel</code> (Xiaomi)\nðŸŒ¿ Branch: <code>%s</code>\nðŸŽ¯ Target: <code>vendorbootimage</code> (RaV Â· GKI 2.0)\nðŸ‘¤ Maintainer: TheGreatEclipse\nðŸŒ² Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View</a>' \
               "$FOX_BRANCH")"
 
       - name: Clone orangefox_sync
@@ -173,7 +173,7 @@ jobs:
              grep -q 'name:[[:space:]]*"guava"' external/guava/Android.bp; then
             echo "guava module already available."
           else
-            echo "guava missing — cloning fallback..."
+            echo "guava missing â€” cloning fallback..."
             rm -rf external/guava
             git clone --depth=1 \
               https://android.googlesource.com/platform/external/guava \
@@ -239,7 +239,7 @@ jobs:
 
           # Bail out clearly if the API call didn't return a proper release object
           if ! echo "$RESPONSE" | jq -e '.assets' >/dev/null 2>&1; then
-            echo "❌ GitHub API did not return a valid release object."
+            echo "? GitHub API did not return a valid release object."
             echo "---- Response (truncated) ----"
             echo "$RESPONSE" | head -c 500
             echo
@@ -250,7 +250,7 @@ jobs:
             | jq -r '[.assets[] | select(.name | test("^Magisk-.*\\.apk$")) | .browser_download_url][0]')
 
           if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "❌ Could not find a Magisk-*.apk asset in the latest release."
+            echo "? Could not find a Magisk-*.apk asset in the latest release."
             echo "Available assets:"
             echo "$RESPONSE" | jq -r '.assets[].name'
             exit 1
@@ -261,7 +261,7 @@ jobs:
 
           APK=$(ls Magisk*.apk 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            echo "❌ Download appears to have failed, no Magisk*.apk present."
+            echo "? Download appears to have failed, no Magisk*.apk present."
             exit 1
           fi
           mv "$APK" "${APK%.apk}.zip"
@@ -312,9 +312,11 @@ jobs:
       - name: Check build outputs
         run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
+          echo "OUT_DIR=$OUT" >> "$GITHUB_ENV"
           if [ -f "$OUT"/vendor_boot.img ]; then
             echo "CHECK_IMG_IS_OK=true" >> "$GITHUB_ENV"
-            echo "MD5_IMG=$(md5sum "$OUT"/vendor_boot.img | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+            MD5=$(md5sum "$OUT"/vendor_boot.img | cut -d ' ' -f1)
+            echo "MD5_IMG=$MD5" >> "$GITHUB_ENV"
             cp "$OUT"/vendor_boot.img "$OUT"/OrangeFox-spinel-vendor_boot.img
             echo "FILENAME=OrangeFox-spinel-vendor_boot.img" >> "$GITHUB_ENV"
           else
@@ -328,7 +330,7 @@ jobs:
           fi
 
       - name: Upload to GitHub Release
-        if: env.CHECK_IMG_IS_OK == 'true' && env.CHECK_ZIP_IS_OK == 'true'
+        if: env.CHECK_IMG_IS_OK == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -339,12 +341,12 @@ jobs:
           tag_name: ${{ github.run_id }}
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            ## 🦊 OrangeFox Recovery — Xiaomi Spinel
+            ## ðŸ¦Š OrangeFox Recovery â€” Xiaomi Spinel
 
             | | |
             |---|---|
             | **Branch** | `${{ env.FOX_BRANCH }}` |
-            | **Target** | `vendorbootimage` (Recovery-as-Vendor · GKI 2.0) |
+            | **Target** | `vendorbootimage` (Recovery-as-Vendor Â· GKI 2.0) |
             | **Device tree** | [${{ github.event.inputs.DT_REPO_URL }}](${{ github.event.inputs.DT_REPO_URL }}) @ `${{ github.event.inputs.DT_BRANCH }}` |
             | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.event.inputs.DT_REPO_URL }}/commit/${{ env.COMMIT_ID }}) |
             | **Maintainer** | TheGreatEclipse |
@@ -354,33 +356,77 @@ jobs:
 
       - name: Mirror to oshi.at
         if: env.CHECK_IMG_IS_OK == 'true'
+        continue-on-error: true
         run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
           FILE="$OUT/vendor_boot.img"
-          [ -z "$FILE" ] && exit 0
-          RESULT=$(curl -sT "$FILE" "https://oshi.at/OrangeFox-spinel-vendor_boot.img/20160")
+          if [ ! -f "$FILE" ]; then exit 0; fi
+          RESULT=$(curl -skT "$FILE" "https://oshi.at/OrangeFox-spinel-vendor_boot.img/20160" 2>/dev/null || curl -sT "$FILE" "http://oshi.at/OrangeFox-spinel-vendor_boot.img/20160" 2>/dev/null)
           MIRROR_LINK=$(echo "$RESULT" | grep -i "DL:" | awk '{print $2}')
-          echo "MIRROR_LINK=$MIRROR_LINK" >> "$GITHUB_ENV"
-          echo "Mirror: $MIRROR_LINK"
+          if [ -n "$MIRROR_LINK" ]; then
+            echo "MIRROR_LINK=$MIRROR_LINK" >> "$GITHUB_ENV"
+            echo "Mirror: $MIRROR_LINK"
+          else
+            echo "oshi.at upload failed or returned no DL link"
+          fi
 
-      - name: Telegram — success
+      - name: Upload to Gofile.io
+        if: env.CHECK_IMG_IS_OK == 'true'
+        continue-on-error: true
+        run: |
+          OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
+          FILE="$OUT/vendor_boot.img"
+          if [ ! -f "$FILE" ]; then exit 0; fi
+
+          # Get a Gofile server
+          SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
+          SERVER=$(echo "$SERVER_RESPONSE" | jq -r '.data.servers[0].name // "store4"')
+          echo "Gofile server: $SERVER"
+
+          GOFILE_RESPONSE=$(curl -s \
+            -F "file=@$FILE" \
+            "https://${SERVER}.gofile.io/uploadFile")
+
+          GOFILE_LINK=$(echo "$GOFILE_RESPONSE" | jq -r '.data.downloadPage // empty')
+          if [ -n "$GOFILE_LINK" ]; then
+            echo "GOFILE_LINK=$GOFILE_LINK" >> "$GITHUB_ENV"
+            echo "Gofile: $GOFILE_LINK"
+          else
+            echo "Gofile upload failed"
+            echo "$GOFILE_RESPONSE" | head -c 300
+          fi
+
+      - name: Telegram â€” success
         if: success() && env.TG_TOKEN != '' && env.CHECK_IMG_IS_OK == 'true'
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            -d chat_id="${TG_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✅ Build complete!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code>\n📦 File: <code>%s</code>\n🔐 MD5: <code>%s</code>\n⬇️ Mirror: <a href=\"%s\">oshi.at</a>\n🌲 Release: <a href=\"https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}\">GitHub</a>\n👤 By: TheGreatEclipse' \
-              "$FOX_BRANCH" "$FILENAME" "$MD5_ZIP" "$MIRROR_LINK")"
+          TG_TEXT='ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâœ… Build complete!\n\nðŸ“± Device: <code>spinel</code>\nðŸŒ¿ Branch: <code>%s</code>\nðŸŽ¯ Target: <code>vendorbootimage</code>\nðŸ“¦ File: <code>%s</code>\nðŸ” MD5: <code>%s</code>\n'
+          if [ -n "$GOFILE_LINK" ]; then
+            TG_TEXT="${TG_TEXT}â¬‡ï¸ Gofile: <a href=\"%s\">Download</a>\n"
+          fi
+          if [ -n "$MIRROR_LINK" ]; then
+            TG_TEXT="${TG_TEXT}â¬‡ï¸ Mirror: <a href=\"%s\">oshi.at</a>\n"
+          fi
+          TG_TEXT="${TG_TEXT}ðŸŒ² Release: <a href=\"https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}\">GitHub</a>\nðŸ‘¤ By: TheGreatEclipse"
 
-      - name: Telegram — failure
+          ARGS="-d parse_mode=HTML -d text=\"$(printf "$TG_TEXT" "$FOX_BRANCH" "$FILENAME" "$MD5_IMG""
+          if [ -n "$GOFILE_LINK" ]; then
+            ARGS="$ARGS" '"$GOFILE_LINK"'
+          fi
+          if [ -n "$MIRROR_LINK" ]; then
+            ARGS="$ARGS" '"$MIRROR_LINK"'
+          fi
+          ARGS="$ARGS)"\"
+
+          eval curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -d chat_id="${TG_CHAT_ID}" $ARGS
+
+      - name: Telegram â€” failure
         if: failure() && env.TG_TOKEN != ''
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n❌ Build FAILED!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View logs</a>' \
+              'ðŸ¦Š <b>OrangeFox CI Â· Xiaomi Spinel</b>\n\nâŒ Build FAILED!\n\nðŸ“± Device: <code>spinel</code>\nðŸŒ¿ Branch: <code>%s</code>\nðŸŒ² Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View logs</a>' \
               "$FOX_BRANCH")"
 
       - name: Run LDCheck
@@ -389,7 +435,7 @@ jobs:
         run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}/recovery/root"
           if [ ! -f "ci/tools/ldcheck" ] || [ ! -f "ci/tools/libneeds" ]; then
-            echo "❌ ci/tools/ldcheck or ci/tools/libneeds not found."
+            echo "? ci/tools/ldcheck or ci/tools/libneeds not found."
             exit 1
           fi
           cp ci/tools/libneeds "$OUT/libneeds"
