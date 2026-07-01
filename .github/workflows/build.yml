@@ -302,8 +302,7 @@ jobs:
 
           # Build libpixelflinger first, before vendorbootimage
           echo "=== Building libpixelflinger.so ==="
-          ONE_SHOT_MAKEFILE="system/core/libpixelflinger/Android.mk" \
-            make -j$(nproc) libpixelflinger 2>&1 || true
+          mka libpixelflinger 2>&1 || true
 
           # Copy built libpixelflinger into device tree recovery/root so it gets packed into vendor_boot
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
