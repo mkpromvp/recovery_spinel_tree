@@ -44,15 +44,15 @@ on:
         type: string
 
       DT_REPO_URL:
-        description: "Device tree repository URL (leave empty for same repo)"
+        description: "Device tree repository URL"
         required: false
-        default: ""
+        default: "https://github.com/mkpromvp/recovery_device_xiaomi_spinel.git"
         type: string
 
       DT_BRANCH:
         description: "Device tree branch"
         required: true
-        default: "Tree"
+        default: "android-12.1"
         type: string
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ jobs:
         run: |
           echo "Branch       : ${{ github.event.inputs.FOX_BRANCH }}"
           echo "Target       : vendorbootimage (Recovery-as-Vendor · GKI 2.0)"
-          echo "Device tree  : ${{ github.event.inputs.DT_REPO_URL || github.server_url }}/${{ github.repository }} @ ${{ github.event.inputs.DT_BRANCH }}"
+          echo "Device tree  : ${{ github.event.inputs.DT_REPO_URL }} @ ${{ github.event.inputs.DT_BRANCH }}"
           echo "Maintainer   : TheGreatEclipse"
           echo "LDCheck      : ${{ github.event.inputs.LDCHECK }}"
 
@@ -186,10 +186,6 @@ jobs:
 
           DT_URL="${{ github.event.inputs.DT_REPO_URL }}"
           DT_BRANCH="${{ github.event.inputs.DT_BRANCH }}"
-
-          if [ -z "$DT_URL" ]; then
-            DT_URL="${{ github.server_url }}/${{ github.repository }}.git"
-          fi
 
           git clone --depth=1 "$DT_URL" -b "$DT_BRANCH" ./device_tree_staging
 
@@ -315,8 +311,8 @@ jobs:
             |---|---|
             | **Branch** | `${{ env.FOX_BRANCH }}` |
             | **Target** | `vendorbootimage` (Recovery-as-Vendor · GKI 2.0) |
-            | **Device tree** | [${{ github.event.inputs.DT_REPO_URL || github.server_url }}/${{ github.repository }}](${{ github.event.inputs.DT_REPO_URL || format('{0}/{1}', github.server_url, github.repository) }}) @ `${{ github.event.inputs.DT_BRANCH }}` |
-            | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.event.inputs.DT_REPO_URL || format('{0}/{1}/commit/{2}', github.server_url, github.repository, env.COMMIT_ID) }}) |
+            | **Device tree** | [${{ github.event.inputs.DT_REPO_URL }}](${{ github.event.inputs.DT_REPO_URL }}) @ `${{ github.event.inputs.DT_BRANCH }}` |
+            | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.event.inputs.DT_REPO_URL }}/commit/${{ env.COMMIT_ID }}) |
             | **Maintainer** | TheGreatEclipse |
             | **Build date** | `${{ env.BUILD_DATE }}` |
             | **MD5 (img)** | `${{ env.MD5_IMG }}` |
