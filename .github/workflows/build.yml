@@ -43,6 +43,18 @@ on:
         required: false
         type: string
 
+      DT_REPO_URL:
+        description: "Device tree repository URL (leave empty for same repo)"
+        required: false
+        default: ""
+        type: string
+
+      DT_BRANCH:
+        description: "Device tree branch"
+        required: true
+        default: "Tree"
+        type: string
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -58,40 +70,33 @@ jobs:
       GITHUB_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
       TG_TOKEN:      ${{ secrets.TG_TOKEN }}
       TG_CHAT_ID:    ${{ secrets.TG_CHAT_ID }}
-      # ── Fixed device values ────────────────────────────────────────────────
       DEVICE:        spinel
       OEM:           xiaomi
       OF_MAINTAINER: TheGreatEclipse
-      # Recovery-as-Vendor + GKI 2.0 — always vendorbootimage for spinel
       TARGET:        vendorbootimage
 
     steps:
 
-      # ── Checkout builder branch (this repo) ─────────────────────────────
       - name: Checkout builder branch
         uses: actions/checkout@v4
         with:
           ref: Builder
           path: ci
 
-      # ── Display inputs ───────────────────────────────────────────────────
       - name: Display inputs
         run: |
           echo "Branch       : ${{ github.event.inputs.FOX_BRANCH }}"
           echo "Target       : vendorbootimage (Recovery-as-Vendor · GKI 2.0)"
-          echo "Device tree  : ${{ github.server_url }}/${{ github.repository }} @ Tree"
+          echo "Device tree  : ${{ github.event.inputs.DT_REPO_URL || github.server_url }}/${{ github.repository }} @ ${{ github.event.inputs.DT_BRANCH }}"
           echo "Maintainer   : TheGreatEclipse"
           echo "LDCheck      : ${{ github.event.inputs.LDCHECK }}"
 
-      # ── Parse inputs ─────────────────────────────────────────────────────
       - name: Parse inputs
         run: |
           RAW_BRANCH="${{ github.event.inputs.FOX_BRANCH }}"
-          SYNC_BRANCH=$(echo "$RAW_BRANCH" | awk '{print $1}')   # 12.1 or 14.1
-          FOX_BRANCH="fox_${SYNC_BRANCH}"                        # fox_12.1 or fox_14.1
-          BRANCH_INT=$(echo "$SYNC_BRANCH" | cut -d. -f1)        # 12 or 14
-
-          # orangefox_sync.sh puts the tree at $GITHUB_WORKSPACE/OrangeFox/fox_<branch>
+          SYNC_BRANCH=$(echo "$RAW_BRANCH" | awk '{print $1}')
+          FOX_BRANCH="fox_${SYNC_BRANCH}"
+          BRANCH_INT=$(echo "$SYNC_BRANCH" | cut -d. -f1)
           SYNC_PATH="${GITHUB_WORKSPACE}/OrangeFox/${FOX_BRANCH}"
 
           {
@@ -103,17 +108,14 @@ jobs:
             echo "CHECK_LEGACY_BRANCH=false"
           } >> "$GITHUB_ENV"
 
-      # ── Slim down the runner ─────────────────────────────────────────────
       - name: Clean up runner disk space
         uses: rokibhasansagar/slimhub_actions@main
 
-      # ── Extra swap space ─────────────────────────────────────────────────
       - name: Add swap space (12 GB)
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 12
 
-      # ── Install build dependencies ────────────────────────────────────────
       - name: Install build environment
         run: |
           sudo apt-get update -qq
@@ -122,7 +124,6 @@ jobs:
           cd "$HOME/ofox-scripts"
           sudo bash setup/android_build_env.sh
 
-      # ── ccache ───────────────────────────────────────────────────────────
       - name: Restore ccache
         uses: actions/cache@v4
         with:
@@ -135,14 +136,12 @@ jobs:
       - name: Set ccache size
         run: ccache -M 50G
 
-      # ── Git identity ──────────────────────────────────────────────────────
       - name: Configure git
         run: |
           git config --global user.name  "${{ github.actor }}"
           git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git config --global color.ui   false
 
-      # ── Telegram: started ─────────────────────────────────────────────────
       - name: Telegram — build started
         if: env.TG_TOKEN != ''
         run: |
@@ -150,10 +149,9 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✔️ Build triggered!\n\n📱 Device: <code>spinel</code> (Xiaomi)\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code> (RaV · GKI 2.0)\n👤 Maintainer: TheGreatEclipse\n🌲 Logs: <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View</a>' \
+              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✔️ Build triggered!\n\n📱 Device: <code>spinel</code> (Xiaomi)\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code> (RaV · GKI 2.0)\n👤 Maintainer: TheGreatEclipse\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View</a>' \
               "$FOX_BRANCH")"
 
-      # ── Sync via official orangefox_sync.sh ──────────────────────────────
       - name: Clone orangefox_sync
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/OrangeFox"
@@ -167,7 +165,6 @@ jobs:
             --branch "$SYNC_BRANCH" \
             --path   "$SYNC_PATH"
 
-      # ── Guava fallback for 14.1 ───────────────────────────────────────────
       - name: Ensure Guava dependency (14.1 only)
         if: env.SYNC_BRANCH == '14.1'
         run: |
@@ -183,18 +180,19 @@ jobs:
               external/guava
           fi
 
-      # ── Clone spinel device tree (Tree branch, same repo as builder) ─────
       - name: Clone spinel device tree
         run: |
           cd "$SYNC_PATH"
 
-          # Clone the Tree branch from this very repository into a staging dir
-          git clone --depth=1 \
-            "${{ github.server_url }}/${{ github.repository }}.git" \
-            -b Tree \
-            ./device_tree_staging
+          DT_URL="${{ github.event.inputs.DT_REPO_URL }}"
+          DT_BRANCH="${{ github.event.inputs.DT_BRANCH }}"
 
-          # Extract PRODUCT_BRAND, PRODUCT_DEVICE from .mk files
+          if [ -z "$DT_URL" ]; then
+            DT_URL="${{ github.server_url }}/${{ github.repository }}.git"
+          fi
+
+          git clone --depth=1 "$DT_URL" -b "$DT_BRANCH" ./device_tree_staging
+
           cd device_tree_staging
           DEVICE_MAKEFILE=""
           DEVICE_DIRECTORY=""
@@ -205,14 +203,13 @@ jobs:
             codename=$(sed -n 's/^[[:space:]]*PRODUCT_DEVICE[[:space:]]*:=\s*\(.*\)/\1/p' "$file")
             if [[ -n "$makefile" && -n "$brand" && -n "$codename" ]]; then
               DEVICE_MAKEFILE="$makefile"
-              DEVICE_DIRECTORY="device/xiaomi"
+              DEVICE_DIRECTORY="device/$brand"
               DEVICE_NAME="$codename"
               break
             fi
           done
           cd ..
 
-          # Fall back to hardcoded values if .mk parsing fails
           DEVICE_DIRECTORY="${DEVICE_DIRECTORY:-device/xiaomi}"
           DEVICE_NAME="${DEVICE_NAME:-spinel}"
 
@@ -227,7 +224,6 @@ jobs:
             echo "COMMIT_ID=$COMMIT_ID"
           } >> "$GITHUB_ENV"
 
-      # ── Download latest Magisk (optional) ─────────────────────────────────
       - name: Download latest Magisk
         if: github.event.inputs.USE_LATEST_MAGISK == 'true'
         run: |
@@ -241,7 +237,6 @@ jobs:
           [ -n "$APK" ] && mv "$APK" "${APK%.apk}.zip"
           echo "FOX_USE_SPECIFIC_MAGISK_ZIP=$(ls ~/Magisk/Magisk*.zip | head -1)" >> "$GITHUB_ENV"
 
-      # ── Build ─────────────────────────────────────────────────────────────
       - name: Build OrangeFox
         run: |
           set +e
@@ -249,11 +244,9 @@ jobs:
           source build/envsetup.sh
           set -e
 
-          # User-supplied extras
           EXTRA="${{ github.event.inputs.EXTRA_CMD }}"
           [ -n "$EXTRA" ] && eval "$EXTRA"
 
-          # Core build vars
           export FOX_BUILD_DEVICE="$DEVICE_NAME"
           export OF_MAINTAINER="TheGreatEclipse"
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -261,23 +254,18 @@ jobs:
           export FOX_BUILD_TYPE="Unofficial-CI"
           export LC_ALL="C"
 
-          # ccache
           export USE_CCACHE=1
           export CCACHE_EXEC=$(which ccache)
 
-          # Versioning (wiki §9 — FOX_VERSION obsolete from R11.3+)
           PATCH_VER="${{ github.event.inputs.OF_MAINTAINER_PATCH_VERSION }}"
           [ -n "$PATCH_VER" ] && export FOX_MAINTAINER_PATCH_VERSION="$PATCH_VER"
 
-          # Magisk
           [ -n "$FOX_USE_SPECIFIC_MAGISK_ZIP" ] && \
             export FOX_USE_SPECIFIC_MAGISK_ZIP="$FOX_USE_SPECIFIC_MAGISK_ZIP"
 
-          # Spinel: GKI 2.0 / Virtual A/B / Recovery-as-Vendor
           export FOX_AB_DEVICE=1
           export FOX_VIRTUAL_AB_DEVICE=1
 
-          # Lunch target differs per branch (wiki build commands)
           if [ "$BRANCH_INT" = "14" ]; then
             LUNCH_TARGET="twrp_spinel-ap2a-eng"
           else
@@ -288,11 +276,9 @@ jobs:
           make clean
           mka adbd vendorbootimage
 
-      # ── Set build date ────────────────────────────────────────────────────
       - name: Set build date
         run: echo "BUILD_DATE=$(date +%Y%m%d)" >> "$GITHUB_ENV"
 
-      # ── Check outputs exist ───────────────────────────────────────────────
       - name: Check build outputs
         run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
@@ -310,7 +296,6 @@ jobs:
             echo "No .zip found in $OUT"
           fi
 
-      # ── Upload to GitHub Release ─────────────────────────────────────────
       - name: Upload to GitHub Release
         if: env.CHECK_IMG_IS_OK == 'true' && env.CHECK_ZIP_IS_OK == 'true'
         uses: softprops/action-gh-release@v2
@@ -330,14 +315,13 @@ jobs:
             |---|---|
             | **Branch** | `${{ env.FOX_BRANCH }}` |
             | **Target** | `vendorbootimage` (Recovery-as-Vendor · GKI 2.0) |
-            | **Device tree** | [${{ github.repository }} @ Tree](${{ github.server_url }}/${{ github.repository }}/tree/Tree) |
-            | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ env.COMMIT_ID }}) |
+            | **Device tree** | [${{ github.event.inputs.DT_REPO_URL || github.server_url }}/${{ github.repository }}](${{ github.event.inputs.DT_REPO_URL || format('{0}/{1}', github.server_url, github.repository) }}) @ `${{ github.event.inputs.DT_BRANCH }}` |
+            | **Tree commit** | [`${{ env.COMMIT_ID }}`](${{ github.event.inputs.DT_REPO_URL || format('{0}/{1}/commit/{2}', github.server_url, github.repository, env.COMMIT_ID) }}) |
             | **Maintainer** | TheGreatEclipse |
             | **Build date** | `${{ env.BUILD_DATE }}` |
             | **MD5 (img)** | `${{ env.MD5_IMG }}` |
             | **MD5 (zip)** | `${{ env.MD5_ZIP }}` |
 
-      # ── Mirror to oshi.at ─────────────────────────────────────────────────
       - name: Mirror to oshi.at
         if: env.CHECK_ZIP_IS_OK == 'true'
         run: |
@@ -349,7 +333,6 @@ jobs:
           echo "MIRROR_LINK=$MIRROR_LINK" >> "$GITHUB_ENV"
           echo "Mirror: $MIRROR_LINK"
 
-      # ── Telegram: success ─────────────────────────────────────────────────
       - name: Telegram — success
         if: success() && env.TG_TOKEN != '' && env.CHECK_ZIP_IS_OK == 'true'
         run: |
@@ -357,10 +340,9 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✅ Build complete!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code>\n📦 File: <code>%s</code>\n🔐 MD5: <code>%s</code>\n⬇️ Mirror: <a href="%s">oshi.at</a>\n🌲 Release: <a href="https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}">GitHub</a>\n👤 By: TheGreatEclipse' \
+              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n✅ Build complete!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🎯 Target: <code>vendorbootimage</code>\n📦 File: <code>%s</code>\n🔐 MD5: <code>%s</code>\n⬇️ Mirror: <a href=\"%s\">oshi.at</a>\n🌲 Release: <a href=\"https://github.com/${{ github.repository }}/releases/tag/${{ github.run_id }}\">GitHub</a>\n👤 By: TheGreatEclipse' \
               "$FOX_BRANCH" "$FILENAME" "$MD5_ZIP" "$MIRROR_LINK")"
 
-      # ── Telegram: failure ─────────────────────────────────────────────────
       - name: Telegram — failure
         if: failure() && env.TG_TOKEN != ''
         run: |
@@ -368,30 +350,22 @@ jobs:
             -d chat_id="${TG_CHAT_ID}" \
             -d parse_mode="HTML" \
             -d text="$(printf \
-              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n❌ Build FAILED!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🌲 Logs: <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View logs</a>' \
+              '🦊 <b>OrangeFox CI · Xiaomi Spinel</b>\n\n❌ Build FAILED!\n\n📱 Device: <code>spinel</code>\n🌿 Branch: <code>%s</code>\n🌲 Logs: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View logs</a>' \
               "$FOX_BRANCH")"
 
-      # ── LDCheck (optional) — tools/ lives in Builder branch, checked out at ci/ ──
       - name: Run LDCheck
         if: inputs.LDCHECK == 'true'
         continue-on-error: true
         run: |
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}/recovery/root"
-
-          # tools/ldcheck and tools/libneeds come from the Builder branch checkout (ci/)
           if [ ! -f "ci/tools/ldcheck" ] || [ ! -f "ci/tools/libneeds" ]; then
             echo "❌ ci/tools/ldcheck or ci/tools/libneeds not found."
-            echo "   Make sure both files exist in the tools/ folder of your Builder branch."
             exit 1
           fi
-
           cp ci/tools/libneeds "$OUT/libneeds"
           cp ci/tools/ldcheck  "$OUT/ldcheck"
           chmod +x "$OUT/ldcheck" "$OUT/libneeds"
-
           cd "$OUT"
           python3 ldcheck \
             -p system/lib64:vendor/lib64:system/lib:vendor/lib \
             -d ${{ inputs.LDCHECKPATH }}
-
-          echo "LDCheck complete — review output above for missing dependencies."
