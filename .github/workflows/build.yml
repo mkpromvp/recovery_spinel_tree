@@ -1,4 +1,4 @@
-name: 🦊 OrangeFox · Xiaomi Spinel
+﻿name: 🦊 OrangeFox · Xiaomi Spinel
 
 on:
   workflow_dispatch:
@@ -262,7 +262,7 @@ jobs:
           mv "$APK" "${APK%.apk}.zip"
           echo "FOX_USE_SPECIFIC_MAGISK_ZIP=$(ls ~/Magisk/Magisk*.zip | head -1)" >> "$GITHUB_ENV"
 
-      - name: Build OrangeFox
+      - name: Build OrangeFox (with libpixelflinger in ramdisk)
         run: |
           set +e
           cd "$SYNC_PATH"
@@ -299,67 +299,51 @@ jobs:
 
           lunch "$LUNCH_TARGET"
           make clean
-          mka adbd vendorbootimage
 
-      - name: Copy libpixelflinger.so to recovery ramdisk
-        run: |
+          # Build libpixelflinger first, before vendorbootimage
+          echo "=== Building libpixelflinger.so ==="
+          ONE_SHOT_MAKEFILE="system/core/libpixelflinger/Android.mk" \
+            make -j$(nproc) libpixelflinger 2>&1 || true
+
+          # Copy built libpixelflinger into device tree recovery/root so it gets packed into vendor_boot
           OUT="$SYNC_PATH/out/target/product/${DEVICE_NAME}"
-          RAMDISK="$OUT/recovery/root"
-          mkdir -p "$RAMDISK/vendor/lib64" "$RAMDISK/vendor/lib"
-
-          echo "=== Searching for built libpixelflinger.so ==="
+          DEVICE_TREE="$DEVICE_DIRECTORY/$DEVICE_NAME"
           PIX="libpixelflinger.so"
-          FOUND=""
 
-          # Search common build output paths
+          FOUND_64=""
+          FOUND_32=""
+
           for path in \
             "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
             "$OUT/system/lib64/$PIX" \
             $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
             if [ -f "$path" ]; then
-              cp -v "$path" "$RAMDISK/vendor/lib64/$PIX"
-              FOUND="1"
+              mkdir -p "$DEVICE_TREE/recovery/root/vendor/lib64"
+              cp -v "$path" "$DEVICE_TREE/recovery/root/vendor/lib64/$PIX"
+              FOUND_64="1"
               break
             fi
           done
 
-          if [ -z "$FOUND" ]; then
-            echo "? 64-bit libpixelflinger.so not found — building from source..."
-            # Build it manually from AOSP source
-            cd "$SYNC_PATH"
-            ONE_SHOT_MAKEFILE="system/core/libpixelflinger/Android.mk" \
-              make -j$(nproc) libpixelflinger 2>/dev/null || true
-            for path in \
-              "$OUT/obj/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
-              $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
-              if [ -f "$path" ]; then
-                cp -v "$path" "$RAMDISK/vendor/lib64/$PIX"
-                FOUND="1"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "$FOUND" ]; then
-            echo "?? CRITICAL: libpixelflinger.so still not found!"
-            find "$OUT" -name "libpixelflinger*" 2>/dev/null | head -10 || true
-          fi
-
-          # Also copy 32-bit
           for path in \
             "$OUT/obj_arm/SHARED_LIBRARIES/libpixelflinger_intermediates/$PIX" \
             "$OUT/system/lib/$PIX" \
             $(find "$OUT/obj" -path "*/libpixelflinger*" -name "$PIX" 2>/dev/null | head -3); do
             if [ -f "$path" ]; then
-              cp -v "$path" "$RAMDISK/vendor/lib/$PIX"
+              mkdir -p "$DEVICE_TREE/recovery/root/vendor/lib"
+              cp -v "$path" "$DEVICE_TREE/recovery/root/vendor/lib/$PIX"
+              FOUND_32="1"
               break
             fi
           done
 
-          echo "=== Ramdisk vendor/lib64 ==="
-          ls -la "$RAMDISK/vendor/lib64/" 2>/dev/null || true
-          echo "=== Ramdisk vendor/lib ==="
-          ls -la "$RAMDISK/vendor/lib/" 2>/dev/null || true
+          echo "=== Device tree recovery/root/vendor/ contents ==="
+          find "$DEVICE_TREE/recovery/root/vendor" -name "*.so" 2>/dev/null || echo "(empty)"
+
+          # Now build vendorbootimage - libpixelflinger will be packed since it's in device tree
+          echo "=== Building vendorbootimage ==="
+          mka adbd vendorbootimage
+
 
       - name: Set build date
         run: echo "BUILD_DATE=$(date +%Y%m%d)" >> "$GITHUB_ENV"
