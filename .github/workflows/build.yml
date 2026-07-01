@@ -104,7 +104,7 @@ jobs:
             echo "SYNC_BRANCH=$SYNC_BRANCH"
             echo "BRANCH_INT=$BRANCH_INT"
             echo "SYNC_PATH=$SYNC_PATH"
-            echo "CCACHE_DIR=$HOME/.ccache"
+            echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache"
             echo "CHECK_LEGACY_BRANCH=false"
           } >> "$GITHUB_ENV"
 
@@ -127,7 +127,7 @@ jobs:
       - name: Restore ccache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: ${{ github.workspace }}/.ccache
           key: ccache-spinel-${{ github.event.inputs.FOX_BRANCH }}-${{ github.sha }}
           restore-keys: |
             ccache-spinel-${{ github.event.inputs.FOX_BRANCH }}-
